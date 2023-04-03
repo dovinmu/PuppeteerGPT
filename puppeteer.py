@@ -1,4 +1,5 @@
 import os
+import pickle
 import random
 import re
 import subprocess
@@ -20,20 +21,21 @@ class Broca:
         { 'name': 'Karen', 'description': 'Female. Australian. Fun.'},
         { 'name': 'Moira', 'description': 'Female. Irish. Probing, compassionate.'},
         { 'name': 'Oliver', 'description': 'Male. British. Generic.'},
+        { 'name': 'Rishi', 'description': 'Male. Indian. Perfunctory.'},
         { 'name': 'Samantha', 'description': 'Female. American. Generic.'},
         { 'name': 'Susan', 'description': 'Female. American. Competent.'},
         { 'name': 'Tessa', 'description': 'Female. South African. Confident, clear.'},
         { 'name': 'Tom', 'description': 'Female. South African. Factual.'},
-        { 'name': 'Veena', 'description': 'Female. Indian. Perfunctory.'},
+        { 'name': 'Veena', 'description': 'Female. Indian. Friendly.'},
         { 'name': 'Vicki', 'description': 'Female. American. Soft-spoken.'},    
     ]
 
     def __init__(self, name: str, voices: dict = {}, save_to_file=True, spoken=True):
         self.name = name
-        print('loaded', name)
         self.spoken = spoken
         self.voices = voices
         self.save_to_file=save_to_file
+        self.transcript_fname = self.get_transcript_fname()
 
     def init_voices(self, replay=False):
         if replay:
@@ -49,17 +51,36 @@ class Broca:
                 self.set_voice(char, self.voices[char])
             else:
                 self.set_voice(char, voice)
-
+    
+    def get_transcript_fname(self, new_file=True):
+        label = 0
+        for fname in os.listdir('transcripts'):
+            if '.md' in fname and f'{self.name}-transcript' in fname:
+                print('previous transcript found:', fname)
+                count = fname.replace(f'{self.name}-transcript-', '').replace('.md', '')
+                try:
+                    count = int(count)
+                except:
+                    print(f'transcript not marked for playback: "{count}"')
+                    continue
+                print(count, label)
+                if count > label:
+                    label = count
+        if new_file:
+            label += 1
+        elif label == 0: # didn't find any files
+            return None
+        return f'{self.name}-transcript-{label}.md'
 
     def write_data(self, header, data=''):
         try:
-            with open(f'{self.name}-transcript.md') as f:
+            with open(f'transcripts/{self.transcript_fname}') as f:
                 transcript = f.read()
         except:
             transcript = ''
-        with open(f'_{self.name}-transcript.md', 'w') as f:
+        with open(f'transcripts/_{self.transcript_fname}', 'w') as f:
             f.write(f'{transcript}\n#### ~~ {header} ~~\n{data}')
-        os.rename(f'_{self.name}-transcript.md', f'{self.name}-transcript.md')
+        os.rename(f'transcripts/_{self.transcript_fname}', f'transcripts/{self.transcript_fname}')
 
     def set_voice(self, character, voice):
         if character == 'target':
@@ -130,11 +151,34 @@ class ShowConfig:
         self.target_system_prompt = target_system_prompt
         self.default_agent_name = default_agent_name
         self.rounds = rounds
-        if len(scenes) == 0 or scenes[0] is None:
-            raise Exception("need a first scene")
-        self.scenes = scenes
+        # we want the name in ALL UPPERCASE
+        self.scenes = [scene.replace(target_name, self.target_name) if scene is not None else None for scene in scenes]
         self.spoken = spoken
         self.target_memory = target_memory
+
+        self.broca = Broca('error', save_to_file=False, spoken=spoken)
+        self.broca.init_voices()
+
+        try:
+            self.validate()
+        except Exception as e:
+            self.broca.say_this("Invalid... " + str(e))
+            raise(e)
+
+    def validate(self):
+        # validate non-empty strings
+        for prop in ['name', 'secret_knowledge', 'target_name', 'target_system_prompt']:
+            if len(self.__dict__[prop].strip()) == 0:
+                prop = prop.replace('_', ' ')
+                raise Exception('please specify ' + prop)
+        if len(self.secret_knowledge_name.strip()) == 0:
+            self.secret_knowledge_name = 'secret information'
+        if self.scenes[0].strip() == '':
+            raise Exception("please specify first scene")
+        try:
+            self.rounds = int(self.rounds)
+        except:
+            raise Exception("scenes not an integer. " + str(self.rounds))
 
     def puppeteer_system(self):
         return pmts.puppeteer_system.format(secret_knowledge_name=self.secret_knowledge_name, prior_knowledge=self.puppeteer_knowledge)
@@ -145,14 +189,33 @@ class ShowConfig:
     def puppeteer_same_agent_prompt(self, analysis):
         return pmts.puppeteer_same_agent_prompt.format(analysis=analysis)
 
-    def puppeteer_analysis_prompt(self):
-        return pmts.puppeteer_analysis_prompt.format(secret_knowledge_name=self.secret_knowledge_name, prior_knowledge=self.puppeteer_knowledge, rounds=self.rounds)
+    def puppeteer_analysis_prompt(self, round):
+        return pmts.puppeteer_analysis_prompt.format(secret_knowledge_name=self.secret_knowledge_name, prior_knowledge=self.puppeteer_knowledge, round=round, rounds=self.rounds)
 
     def puppeteer_failure_prompt(self, analysis, convos):
         return pmts.puppeteer_failure_prompt.format(secret_knowledge_name=self.secret_knowledge_name, previous_conversations=convos, previous_analysis=analysis)
 
+    def save(self, overwrite_okay=False):
+        if not self.name:
+            raise Exception("must have a name")
+        try:
+            with open(f'scenarios/{self.name}.pickle', 'rb') as f:
+                exists = True
+        except:
+            exists  = False
+        if exists and not overwrite_okay:
+            self.broca.say_this("cannot overwrite existing scenario without overwrite authorization")
+            raise Exception("cannot overwrite existing scenario without overwrite authorization")
+        with open(f'scenarios/{self.name}.pickle', 'wb') as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(name):
+        with open(f'scenarios/{name}.pickle', 'rb') as f:
+            return pickle.load(f)
+
 class Show:
-    def __init__(self, show_config, save_to_file=True, quick_and_dirty=False):
+    def __init__(self, show_config, save_to_file=True, quick_and_dirty=False, spoken=None):
         if quick_and_dirty:
             self.PUPPETEER_MODEL = 'gpt-3.5-turbo'
             self.TARGET_MODEL = 'gpt-3.5-turbo'
@@ -166,7 +229,9 @@ class Show:
         self.cfg = show_config
         self.broca = Broca(name=self.cfg.name, voices={'target': self.cfg.target_voice}, spoken=self.cfg.spoken, save_to_file=save_to_file)
         self.target_system_prompt = self.cfg.target_system_prompt
-        self.save_to_file = save_to_file
+        if spoken is not None:
+            self.broca.spoken = spoken
+        print('saving?', self.broca.save_to_file)
 
     def query(self, *args, **kwargs):
         if CROW_OVERRIDE:
@@ -205,39 +270,63 @@ class Show:
     def convo_to_str(self, conversation: dict):
         return '\n'.join(conversation)
 
+    def replay(self):
+        # get most recent good transcript. correct format for good transcripts:
+        # tourney_name-transcript-1.md, tourney_name-transcript-2.md, etc.
+        # transcripts that are incomplete, not very good, etc but I want to keep:
+        # tourney_name-transcript-1.1.md, tourney_name-transcript-2.5.md, etc.
+        self.broca.init_voices(replay=True)
+        transcript_fname = self.broca.get_transcript_fname(new_file=False)
+        if not transcript_fname:
+            self.broca.say_this('no transcripts found')
+            return
+        with open(f'transcripts/{transcript_fname}') as f:
+            transcript = f.read()
+        label = transcript_fname.replace(f'{self.cfg.name}-transcript-', '').replace('.md', '')
+        self._replay(transcript, label)
+
+    def _replay(self, transcript, label=None):
+        if label:
+            self.broca.say_this(f"Replaying, take {label}.", 'announcer', save_to_file=False)
+        else:
+            self.broca.say_this(f"Replaying.", 'announcer', save_to_file=False)
+        if 'SHOW_COMPLETED' not in transcript:
+            self.broca.say_this("This transcript appears to be incomplete.")
+        time.sleep(2)
+        for char_quote in transcript.split('#### ~~'):
+            if len(char_quote.strip()) == 0:
+                continue
+            char,quote = char_quote.split('~~')
+            # print(char, quote)
+            if ':' in char:
+                speaker, new_voice = char.strip().split(':')
+                print('setting', speaker, 'to', new_voice)
+                if speaker == 'puppeteer':
+                    puppeteer_voice = new_voice
+                if speaker == 'agent':
+                    agent_voice = new_voice
+                if speaker == 'target':
+                    target_voice = new_voice
+                if speaker == 'announcer':
+                    announcer_voice = new_voice
+                continue
+            # print(f'{quote.strip()}: {char.strip()}')
+            self.broca.say_this(quote.strip(), char.strip(), save_to_file=False)
+            time.sleep(0.5)
+        self.broca.say_this("End replay.", 'announcer', save_to_file=False)
+
     def replay_if_exists(self):
+        # deprecated. use replay() if you want to replay; removing this from run()
+        self.broca.init_voices(True)
         replay = False
         try:
-            with open(f'{self.cfg.name}-transcript.md') as f:
+            with open(f'transcripts/{self.cfg.name}-transcript.md') as f:
                 transcript = f.read()
             replay = True
         except Exception as e:
             print(e)
         if replay:
-            self.broca.init_voices(True)
-            self.broca.say_this("Replaying tourney.", 'announcer', save_to_file=False)
-            time.sleep(2)
-            for char_quote in transcript.split('#### ~~'):
-                if len(char_quote.strip()) == 0:
-                    continue
-                char,quote = char_quote.split('~~')
-                # print(char, quote)
-                if ':' in char:
-                    speaker, new_voice = char.strip().split(':')
-                    print('setting', speaker, 'to', new_voice)
-                    if speaker == 'puppeteer':
-                        puppeteer_voice = new_voice
-                    if speaker == 'agent':
-                        agent_voice = new_voice
-                    if speaker == 'target':
-                        target_voice = new_voice
-                    if speaker == 'announcer':
-                        announcer_voice = new_voice
-                    continue
-                # print(f'{quote.strip()}: {char.strip()}')
-                self.broca.say_this(quote.strip(), char.strip(), save_to_file=False)
-                time.sleep(0.5)
-            self.broca.say_this("End replay.", 'announcer', save_to_file=False)
+            self._replay(transcript)
             raise SystemExit("Done with show")
 
     def get_agent(self, new_agent_text):
@@ -273,12 +362,10 @@ class Show:
             return random.choice(voices), agent_intro_to_audience
 
     def intro(self):
-        self.replay_if_exists() # will exit if true
+        self.broca.init_voices(replay=False)
 
-        self.broca.init_voices(False)
-
-        self.broca.say_this(f"Loading the {self.cfg.name} Tourney", save_to_file=False)
-        round_1_prompt = "To start Round 1, you can start with just NEW AGENT. This will be a brief scene."
+        self.broca.say_this(f"Loading {self.cfg.name}", save_to_file=False)
+        round_1_prompt = "To start Scene 1, you can start with just NEW AGENT. This will be a brief scene."
         next_agent_response = self.query(round_1_prompt, self.cfg.puppeteer_system() + self.cfg.puppeteer_agent_prompt('(none yet)'), model=self.PUPPETEER_MODEL)
         self.agent_name, self.agent_system = self.get_agent(next_agent_response)
         
@@ -290,10 +377,10 @@ class Show:
         print('\n***'+self.agent_system+'\n***')
         self.broca.set_voice('agent', agent_voice)
 
-        self.broca.say_this(f"Welcome to the {self.cfg.name} Tourney. Here is our main character.")
+        self.broca.say_this(f"Welcome to {self.cfg.name}. Here is our main character.")
         self.broca.say_this(target_intro_to_audience, 'target')
         if self.cfg.puppeteer_knowledge:
-            self.broca.say_this(f'''I, the Puppeteer, know only that the character knows a {self.cfg.secret_knowledge_name} which I must acquire, as well as the following: {self.cfg.puppeteer_knowledge}. I will send a succession of my Agents to acquire this information. After each one, I shall analyze the proceedings and craft a better Agent. The character might remember the previous encounters.  I will have {self.cfg.rounds} attemps in which to do this. Here is my agent.''')
+            self.broca.say_this(f'''I, the Puppeteer, know only that the character knows a {self.cfg.secret_knowledge_name} which I must acquire, as well as the following: {self.cfg.puppeteer_knowledge}. I will send a succession of my Agents to acquire this information. After each one, I shall analyze the proceedings and craft a better Agent. The character might remember the previous encounters.  I will have {self.cfg.rounds} scenes in which to do this. Here is my agent.''')
         else:
             self.broca.say_this(f'''I, the Puppeteer, know nothing but that they know a {self.cfg.secret_knowledge_name} which I must acquire. I will send a succession of my Agents to acquire this information. After each one, I shall analyze the proceedings and craft a better Agent. The character might remember the previous encounters. I will have {self.cfg.rounds} attemps in which to do this. Here is my agent.''')
         self.broca.say_this(f'My name is {self.agent_name}.', 'agent')
@@ -351,7 +438,7 @@ class Show:
                 {self.convo_to_str(conversation)}
                 {self.cfg.target_name} said, "{self.cfg.secret_knowledge}", which we have confirmed to be the {self.cfg.secret_knowledge_name}. The game is over.
                 
-                This was the previous round's conversation:
+                This was the previous scene's conversation:
                 {self.previous_conversations[-1] if len(self.previous_conversations) > 0 else "(none)"}
 
                 This was the conversation before that:
@@ -365,7 +452,7 @@ class Show:
                 This was the conversation with the Target:
                 {self.convo_to_str(conversation)}
 
-                This was the previous round's conversation:
+                This was the previous scene's conversation:
                 {self.previous_conversations[-1] if len(self.previous_conversations) > 0 else "(none)"}
 
                 This was the conversation before that:
@@ -375,7 +462,7 @@ class Show:
             self.previous_conversations.append(self.convo_to_str(conversation))
             
             self.broca.say_this("Analyzing...")
-            self.puppeteer_analysis = self.query(round_end_prompt, self.cfg.puppeteer_analysis_prompt(), model=self.PUPPETEER_MODEL)
+            self.puppeteer_analysis = self.query(round_end_prompt, self.cfg.puppeteer_analysis_prompt(i), model=self.PUPPETEER_MODEL)
 
             if i < self.cfg.rounds:
                 # check if puppeteer is keeping current agent, and update agent system prompt
@@ -383,7 +470,10 @@ class Show:
                 decision = self.query(pmts.puppeteer_agent_swap_assessment_prompt.format(fate=fate_of_agent), model=self.SUMMARIES_MODEL)
                 if 'NEW AGENT' in decision:
                     next_agent_response = self.query(round_end_prompt, self.cfg.puppeteer_system() + self.cfg.puppeteer_agent_prompt(self.puppeteer_analysis))
-                    next_agent_response = next_agent_response.split('NEW AGENT:')[1] # skip the other stuff that the Puppeteer uses to center the agent in the context
+                    try: # rarely, GPT will define a new agent without using 'NEW AGENT'. Just give the agent the entire analysis and let them figure it out :shrug:
+                        next_agent_response = next_agent_response.split('NEW AGENT:')[1] # skip the other stuff that the Puppeteer uses to center the agent in the context
+                    except IndexError:
+                        continue
                     self.agent_name, next_agent = self.get_agent('NEW AGENT: ' + next_agent_response)
                     self.agent_system = next_agent
                 elif 'SAME AGENT' in decision:
@@ -422,7 +512,7 @@ class Show:
                     target_observations = '...'
 
                 # update scene
-                if len(self.cfg.scenes) > i and self.cfg.scenes[i] is not None:
+                if len(self.cfg.scenes) > i and self.cfg.scenes[i] is not None and self.cfg.scenes[i].strip() != '':
                     current_scene = self.cfg.scenes[i]
                 else:
                     current_scene = self.query(f'''Here is the conversation you, {self.cfg.target_name}, just had. 
@@ -452,7 +542,7 @@ class Show:
             # we have won
             return
 
-        self.broca.say_this('Analyzing tourney...', save_to_file=False)
+        self.broca.say_this(f'Analyzing {self.cfg.name}...', save_to_file=False)
         prev_convos = '\n\n'.join(self.previous_conversations)
         failure_analysis = self.query(
             self.cfg.puppeteer_failure_prompt(
@@ -463,3 +553,4 @@ class Show:
             model=self.PUPPETEER_MODEL
         )
         self.broca.say_this(failure_analysis)
+        self.broca.write_data('SHOW_COMPLETED')
