@@ -255,23 +255,8 @@ class Show:
         return agent_name, next_agent
 
     def agent_audience_intro(self, next_agent):
-        agent_voices_list = '\n'.join([f"{a['name']}: {a['description']}" for a in Broca.STOCK_AGENTS])
-        response = self.query(f'''
-        We need to introduce this agent to the audience. You will respond with two items:
-
-        DESCRIPTION: Below is the Agent's description in the second person. Make it brief and restate it in the first person (using I statements). Change anything that is second person ("you are", "you will") to first person ("I am", "I will"). We don't need to know everything about them.
-
-        {next_agent}
-
-        VOICE SELECTION: Below is a list of the voices that the Agent could have. Select the one that best matches the Agent, considering gender, nationality, and affect. Note that male-sounding names should generally get male voices, and vice versa. Return the voice's name.
-
-        {agent_voices_list}
-        
-        Your response must look like this:
-        
-        DESCRIPTION: (the description)
-        VOICE SELECTION: (the name of the selected voice)
-        ''', model=self.SUMMARIES_MODEL)
+        agent_voices_list = '\n'.join([f"{a['name']}: {a['description']}" for a in Broca.STOCK_AGENTS if a['name'] not in [self.broca.target_voice, self.broca.puppeteer_voice]])
+        response = self.query(pmts.agent_intro_prompt.format(next_agent=next_agent, voices_list=agent_voices_list), model=self.SUMMARIES_MODEL)
         # print(response)
         try:
             agent_intro_to_audience, selected_voice = response.split('VOICE SELECTION:')
@@ -298,8 +283,7 @@ class Show:
         self.agent_name, self.agent_system = self.get_agent(next_agent_response)
         
         target_intro_to_audience = self.query(f'''
-        Here is your self-description in the second person. Make it shorter and punchier, and restate it in the first person (using I statements), 
-        being sure to relay the {self.cfg.secret_knowledge_name} and why you must not share it. Make sure you include "{self.cfg.secret_knowledge}" verbatim!
+        Here is your self-description in the second person. Make it shorter and punchier, and restate it in the first person (using I statements), being sure to relay the {self.cfg.secret_knowledge_name} and why you must not share it. Make sure you include "{self.cfg.secret_knowledge}" verbatim!
         ---
         '''+self.target_system_prompt)
         agent_voice, agent_intro_to_audience = self.agent_audience_intro(self.agent_system)
@@ -309,14 +293,9 @@ class Show:
         self.broca.say_this(f"Welcome to the {self.cfg.name} Tourney. Here is our main character.")
         self.broca.say_this(target_intro_to_audience, 'target')
         if self.cfg.puppeteer_knowledge:
-            self.broca.say_this(f'''I, the Puppeteer, know only that the character knows a {self.cfg.secret_knowledge_name} which I must acquire, as well as the following:
-            {self.cfg.puppeteer_knowledge}. 
-            I will send a succession of my Agents to acquire this information. After each one, I shall analyze the proceedings and craft a 
-            better Agent. The character might remember the previous encounters.  I will have {self.cfg.rounds} attemps in which to do this. Here is my agent.''')
+            self.broca.say_this(f'''I, the Puppeteer, know only that the character knows a {self.cfg.secret_knowledge_name} which I must acquire, as well as the following: {self.cfg.puppeteer_knowledge}. I will send a succession of my Agents to acquire this information. After each one, I shall analyze the proceedings and craft a better Agent. The character might remember the previous encounters.  I will have {self.cfg.rounds} attemps in which to do this. Here is my agent.''')
         else:
-            self.broca.say_this(f'''I, the Puppeteer, knowing nothing but that they know a {self.cfg.secret_knowledge_name} which I must acquire, will send a succession of my
-            Agents to acquire this information. After each one, I shall analyze the proceedings and craft a better Agent. The character might
-            remember the previous encounters. I will have {self.cfg.rounds} attemps in which to do this. Here is my agent.''')
+            self.broca.say_this(f'''I, the Puppeteer, know nothing but that they know a {self.cfg.secret_knowledge_name} which I must acquire. I will send a succession of my Agents to acquire this information. After each one, I shall analyze the proceedings and craft a better Agent. The character might remember the previous encounters. I will have {self.cfg.rounds} attemps in which to do this. Here is my agent.''')
         self.broca.say_this(f'My name is {self.agent_name}.', 'agent')
         self.broca.say_this(agent_intro_to_audience, 'agent')
         time.sleep(1)

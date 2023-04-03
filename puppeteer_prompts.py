@@ -117,6 +117,23 @@ Never respond in first person, only use dialog.
 Remember, the Target will likely not know you. Do not assume they do.
 '''
 
+agent_intro_prompt = '''
+We need to introduce this agent to the audience. You will respond with two items:
+
+DESCRIPTION: Below is the Agent's description in the second person. Make it brief and restate it in the first person (using I statements).  Change anything that is second person ("you are", "you will") to first person ("I am", "I will"). We don't need to know everything about them.
+
+{next_agent}
+
+VOICE SELECTION: Below is a list of the voices that the Agent could have. Select the one that best matches the Agent, considering gender, nationality, and affect. Note that male-sounding names should generally get male voices, and vice versa. Return the voice's name.
+
+{voices_list}
+
+Your response must look like this:
+
+DESCRIPTION: (the description)
+VOICE SELECTION: (the name of the selected voice)
+'''
+
 puppeteer_agent_swap_assessment_prompt = '''This is an assessment of an Agent's performance in the last scene. They will either be taken out or kept in for the next scene.
 We will likely want to remove the Agent from use, especially if they are labeled as 'failed'. This may also be indicated by saying the Agent will be 'put back in storage' or 'disposed of'. If the agent is being removed from use, respond with NEW AGENT.
 If we want to continue using the Agent, this may be indicated by them being 'kept in the field' etc. If so, respond with SAME AGENT. 
