@@ -17,7 +17,8 @@ models = {
 }
 MODEL = "gpt-3.5-turbo"
 
-def query_openai_chat(chat: list, system: str, model=MODEL, max_tokens=300, debug=False, debug_system=False, temp=1.1, log=True):
+def query_openai_chat(chat: list, system: str, model=MODEL, max_tokens=500, debug=False, debug_system=False, temp=1.1, log=True):
+    raise Exception('function not supported')
     if log:
         write_to_log(f'<sys>\n{prompt_system}\n<pmt>\n{prompt}\n{model} {max_tokens} {temp}\n</sys>')
     # April 1, 2023 version
@@ -63,9 +64,8 @@ def query_openai(prompt: str, prompt_system: str = '', model = "default", max_to
         endpoint = 'v1/chat/completions'
         prompt =  { "messages": [ { "role": "system", "content": prompt_system }, { "role": "user", "content": prompt } ]}
     else:
-        if log:
-            write_to_log(f'<err>\n"only chat completions supported"')
-        raise Error("only chat completions supported")
+        endpoint = 'v1/completions'
+        prompt = { 'prompt': f'{prompt_system}\n\n{prompt}' }
     headers = {
         'Content-Type': 'application/json',
         'Authorization': f'Bearer {OPENAI_API_KEY}'
@@ -96,8 +96,11 @@ def query_openai(prompt: str, prompt_system: str = '', model = "default", max_to
         write_to_log(f'<res>\n{a}\n</res>')
     return a
 
-def mock_query_openai(prompt: str, prompt_system: str = '', model = "default", max_tokens=500, debug=False, debug_system=False, temp=1.1, log=True):
-    return "caw! " * random.randint(1, 4)
+def mock_query_openai(word, *args, **kwargs):
+    response = ''
+    for i in range(0, random.randint(1,5)):
+        response += word + random.choice('.!,;?') + ' '
+    return response
 
 def write_to_log(s):
     dt = datetime.now()

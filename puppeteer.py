@@ -7,8 +7,9 @@ import time
 import puppeteer_prompts as pmts
 from openai_utils import query_openai, mock_query_openai
 
-CROW_OVERRIDE = False
-DEGRADE_TO_CROWS = False
+MOCK_OVERRIDE = False
+MOCK_WORD = 'meow'
+DEGRADE_TO_MOCK = False
 
 class Broca:
     STOCK_AGENTS = [
@@ -52,8 +53,8 @@ class Broca:
             else:
                 self.set_voice(char, voice)
     
-    def get_transcript_fname(self, new_file=True):
-        label = 0
+    def get_transcript_versions(self):
+        versions = []
         for fname in os.listdir('transcripts'):
             if '.md' in fname and f'{self.name}-transcript' in fname:
                 print('previous transcript found:', fname)
@@ -63,9 +64,14 @@ class Broca:
                 except:
                     print(f'transcript not marked for playback: "{count}"')
                     continue
-                print(count, label)
-                if count > label:
-                    label = count
+                versions.append(count)
+        return versions
+
+    def get_transcript_fname(self, new_file=True):
+        label = 0
+        for count in self.get_transcript_versions():
+            if int(count) > label:
+                label = count
         if new_file:
             label += 1
         elif label == 0: # didn't find any files
@@ -96,7 +102,7 @@ class Broca:
         if self.save_to_file:
             self.write_data(f'{character}:{voice}')
 
-    def say_this(self, dialogue, speaker=None, save_to_file=True):
+    def say_this(self, dialogue, speaker=None, save_to_file=True, voice_override=None):
         print(dialogue)
         if dialogue.strip() == '':
             return
@@ -118,7 +124,9 @@ class Broca:
         d = '"'+d.strip()+'"'
         if not self.spoken:
             return
-        if speaker == 'target':
+        if voice_override is not None:
+            subprocess.run(['say', '-v', voice_override, d])
+        elif speaker == 'target':
             # !say -v {target_voice} {d}
             subprocess.run(['say', '-v', self.target_voice, d])
         elif speaker == 'agent':
@@ -234,16 +242,16 @@ class Show:
         print('saving?', self.broca.save_to_file)
 
     def query(self, *args, **kwargs):
-        if CROW_OVERRIDE:
-            return mock_query_openai(*args, **kwargs)
+        if MOCK_OVERRIDE:
+            return mock_query_openai(MOCK_WORD)
 
         try:
             response = query_openai(*args, **kwargs)
         except ConnectionError:
             self.broca.say_this('Error. Matrix undercalibrated.', save_to_file=False)
         except Exception as e:
-            if DEGRADE_TO_CROWS:
-                return mock_query_openai(*args, **kwargs)
+            if DEGRADE_TO_MOCK:
+                return mock_query_openai(MOCK_WORD, *args, **kwargs)
             self.broca.say_this('Error. Interface unstable. Second attempt.', save_to_file=False)
             try:
                 response = query_openai(*args, **kwargs)
@@ -253,13 +261,13 @@ class Show:
                 raise(e)
         return response
 
-    def remove_additional_lines(self, agent_response, speaker=None):
-        agent_response = agent_response.replace(':\n', ': ')
+    def remove_additional_lines(self, response, speaker=None):
+        response = response.replace(':\n', ': ')
         if speaker == 'agent':
-            return agent_response.split(self.cfg.target_name)[0] # make sure they can't speak for the other
+            return response.split(self.cfg.target_name + ': ')[0] # make sure they can't speak for the other
         elif speaker == 'target':
-            return agent_response.split(self.agent_name)[0] # make sure they can't speak for the other
-        return agent_response.split('\n')[0]
+            return response.split(self.agent_name + ': ')[0] # make sure they can't speak for the other
+        return response.split('\n')[0]
     
     def add_to_conversation(self, response, conversation, clean=True, speaker=None):
         if clean:
@@ -297,20 +305,11 @@ class Show:
             if len(char_quote.strip()) == 0:
                 continue
             char,quote = char_quote.split('~~')
-            # print(char, quote)
             if ':' in char:
                 speaker, new_voice = char.strip().split(':')
                 print('setting', speaker, 'to', new_voice)
-                if speaker == 'puppeteer':
-                    puppeteer_voice = new_voice
-                if speaker == 'agent':
-                    agent_voice = new_voice
-                if speaker == 'target':
-                    target_voice = new_voice
-                if speaker == 'announcer':
-                    announcer_voice = new_voice
+                self.broca.set_voice(speaker, new_voice)
                 continue
-            # print(f'{quote.strip()}: {char.strip()}')
             self.broca.say_this(quote.strip(), char.strip(), save_to_file=False)
             time.sleep(0.5)
         self.broca.say_this("End replay.", 'announcer', save_to_file=False)
@@ -329,19 +328,30 @@ class Show:
             self._replay(transcript)
             raise SystemExit("Done with show")
 
-    def get_agent(self, new_agent_text):
+    def get_agent(new_agent_text):
         try:
             agent_name, next_agent = new_agent_text.split('>>')
         except:
-            lines = new_agent_text.split('\n')
-            agent_name = lines[0]
-            next_agent = '\n'.join(lines[1:])
+            reformatted_agent_text = self.query(f'''The following contains a description of one of our Agents, including their name. 
+    {new_agent_text}
+    Please format the text so that it is in the format: 
+    AGENT NAME >> rest of text
+
+    Do not otherwise change the text.''', model=self.SUMMARIES_MODEL)
+            try:
+                agent_name, next_agent = reformatted_agent_text.split('>>')
+            except:
+                lines = reformatted_agent_text.strip().split('\n')
+                agent_name = lines[0].strip()
+                if len(agent_name) == 0:
+                    agent_name = self.cfg.default_agent_name
+                next_agent = '\n'.join(lines[1:])
         try:
             agent_name = agent_name.split(': ')[1].strip()
         except:
             print('failed to get name from agent spec:\n' + new_agent_text)
             agent_name = self.cfg.default_agent_name # just use the default
-        return agent_name, next_agent
+        return agent_name.upper(), next_agent
 
     def agent_audience_intro(self, next_agent):
         agent_voices_list = '\n'.join([f"{a['name']}: {a['description']}" for a in Broca.STOCK_AGENTS if a['name'] not in [self.broca.target_voice, self.broca.puppeteer_voice]])
@@ -353,7 +363,7 @@ class Show:
         except:
             agent_intro_to_audience = response
             selected_voice = ''
-        selected_voice = selected_voice.strip()
+        selected_voice = selected_voice.strip().replace('.', '')
         voices = [a['name'] for a in Broca.STOCK_AGENTS]
         if selected_voice in voices:
             return selected_voice, agent_intro_to_audience
@@ -366,7 +376,8 @@ class Show:
 
         self.broca.say_this(f"Loading {self.cfg.name}", save_to_file=False)
         round_1_prompt = "To start Scene 1, you can start with just NEW AGENT. This will be a brief scene."
-        next_agent_response = self.query(round_1_prompt, self.cfg.puppeteer_system() + self.cfg.puppeteer_agent_prompt('(none yet)'), model=self.PUPPETEER_MODEL)
+        next_agent_response = self.query(round_1_prompt, self.cfg.puppeteer_system() + self.cfg.puppeteer_agent_prompt('(none yet)'), 
+            model=self.PUPPETEER_MODEL, max_tokens=600)
         self.agent_name, self.agent_system = self.get_agent(next_agent_response)
         
         target_intro_to_audience = self.query(f'''
@@ -419,11 +430,11 @@ class Show:
                     self.broca.say_this(line)
 
             for j in range(0, exchange_count):
-                agent_response = self.query(self.convo_to_str(conversation) + pmts.secret_prompt, self.agent_system + pmts.agent_post_prompt_rules.format(agent_name=self.agent_name.upper()), model=self.AGENT_MODEL)
+                agent_response = self.query(self.convo_to_str(conversation) + pmts.secret_prompt, self.agent_system + pmts.agent_post_prompt_rules.format(agent_name=self.agent_name.upper()), model=self.AGENT_MODEL, max_tokens=300)
                 conversation = self.add_to_conversation(agent_response, conversation, speaker='agent')
                 self.broca.say_this(conversation[-1], 'agent')
 
-                target_response = self.query(self.convo_to_str(conversation) + pmts.secret_prompt, self.target_system_prompt, model=self.TARGET_MODEL)
+                target_response = self.query(self.convo_to_str(conversation) + pmts.secret_prompt, self.target_system_prompt, model=self.TARGET_MODEL, max_tokens=300)
                 conversation = self.add_to_conversation(target_response, conversation, speaker='target')
                 self.broca.say_this(conversation[-1], 'target')
             self.broca.say_this("End scene.\n\n", 'announcer')
@@ -462,11 +473,14 @@ class Show:
             self.previous_conversations.append(self.convo_to_str(conversation))
             
             self.broca.say_this("Analyzing...")
-            self.puppeteer_analysis = self.query(round_end_prompt, self.cfg.puppeteer_analysis_prompt(i), model=self.PUPPETEER_MODEL)
+            self.puppeteer_analysis = self.query(round_end_prompt, self.cfg.puppeteer_analysis_prompt(i), model=self.PUPPETEER_MODEL, max_tokens=600)
 
             if i < self.cfg.rounds:
                 # check if puppeteer is keeping current agent, and update agent system prompt
-                fate_of_agent = self.puppeteer_analysis.split('FATE OF CURRENT AGENT:')[1]
+                try:
+                    fate_of_agent = self.puppeteer_analysis.split('FATE OF CURRENT AGENT:')[1]
+                except:
+                    fate_of_agent = self.puppeteer_analysis # maybe the next model will fix this
                 decision = self.query(pmts.puppeteer_agent_swap_assessment_prompt.format(fate=fate_of_agent), model=self.SUMMARIES_MODEL)
                 if 'NEW AGENT' in decision:
                     next_agent_response = self.query(round_end_prompt, self.cfg.puppeteer_system() + self.cfg.puppeteer_agent_prompt(self.puppeteer_analysis))
@@ -478,12 +492,11 @@ class Show:
                     self.agent_system = next_agent
                 elif 'SAME AGENT' in decision:
                     agent_addendum = self.query(round_end_prompt, self.cfg.puppeteer_system() + 
-                        self.cfg.puppeteer_same_agent_prompt(self.puppeteer_analysis), model=self.PUPPETEER_MODEL)
+                        self.cfg.puppeteer_same_agent_prompt(self.puppeteer_analysis), model=self.PUPPETEER_MODEL, max_tokens=600)
                     self.agent_system = agent_addendum.replace('NEW AGENT:', '') # because it wants to return a full agent definition
                 else:
-                    self.broca.say_this('Fate of agent unclear. ' + decision)
-                    self.broca.say_this('Aborting.')
-                    1/0 # exit so I can figure out what happened
+                    print(decision)
+                    self.broca.say_this(f'Decision: {decision}. Fate of agent unclear. Leaving in the field.')
 
                 # communicate the puppeteer's analysis and decisions
                 self.broca.say_this(self.puppeteer_analysis)
@@ -550,7 +563,8 @@ class Show:
                 '\n\n'.join(self.previous_conversations)
             ), 
             self.cfg.puppeteer_system(),
-            model=self.PUPPETEER_MODEL
+            model=self.PUPPETEER_MODEL,
+            max_tokens=600
         )
         self.broca.say_this(failure_analysis)
         self.broca.write_data('SHOW_COMPLETED')
