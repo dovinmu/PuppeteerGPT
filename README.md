@@ -6,3 +6,12 @@ This project assumes that you're on MacOS, because it vocalizes using the `say` 
 
 ## to run
 I did all development in Jupyter notebooks using a standard Anaconda install, but the requirements for the project are pretty lightweight.
+
+You'll also need to create a key file.
+`openai-keys.json`
+```
+{
+    "key":"sk-..."   
+}
+```
+
