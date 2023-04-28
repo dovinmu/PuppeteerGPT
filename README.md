@@ -4,6 +4,8 @@ This is a bunch of experiments in "adversarial storytelling". Originally my aim 
 ## requirements
 This project assumes that you're on MacOS, because it vocalizes using the `say` command. It also assumes that you've pre-loaded all the English voices. 
 
+If you want to play as an agent, install the `speech_recognition` package and then run `test-human-in-loop.ipynb`.
+
 ## to run
 I did all development in Jupyter notebooks using a standard Anaconda install, but the requirements for the project are pretty lightweight.
 
