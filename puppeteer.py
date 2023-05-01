@@ -328,7 +328,7 @@ class Show:
             self._replay(transcript)
             raise SystemExit("Done with show")
 
-    def get_agent(new_agent_text):
+    def get_agent(self, new_agent_text):
         try:
             agent_name, next_agent = new_agent_text.split('>>')
         except:

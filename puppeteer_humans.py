@@ -103,7 +103,7 @@ class Broca:
         if self.save_to_file:
             self.write_data(f'{character}:{voice}')
 
-    def say_this(self, dialogue, speaker=None, save_to_file=True, voice_override=None):
+    def say_this(self, dialogue, speaker=None, save_to_file=True, voice_override=None, no_dont_say_it=False):
         print(dialogue)
         if dialogue.strip() == '':
             return
@@ -111,7 +111,9 @@ class Broca:
             speaker = 'puppeteer'
         if save_to_file == True and self.save_to_file == True:
             self.write_data(speaker, dialogue)
-        
+        if no_dont_say_it:
+            return
+
         # clean the dialogue for calling macos say
         d = re.sub("[\(\[].*?[\)\]]", "", dialogue)
         d = d.replace('\n', ' ')
@@ -157,7 +159,7 @@ class ShowConfig:
         self.secret_knowledge_name = secret_knowledge_name
         self.target_name = target_name.upper()
         self.target_voice = target_voice
-        self.target_system_prompt = target_system_prompt
+        self.target_system_prompt = target_system_prompt + '\n\n' + pmts.agent_post_prompt_rules
         self.default_agent_name = default_agent_name
         self.rounds = rounds
         # we want the name in ALL UPPERCASE
@@ -199,7 +201,7 @@ class ShowConfig:
         return pmts.puppeteer_same_agent_prompt.format(analysis=analysis)
 
     def puppeteer_analysis_prompt(self, round):
-        return pmts.puppeteer_analysis_prompt.format(secret_knowledge_name=self.secret_knowledge_name, prior_knowledge=self.puppeteer_knowledge, round=round, rounds=self.rounds)
+        return pmts.puppeteer_analysis_prompt.format(secret_knowledge_name=self.secret_knowledge_name, prior_knowledge=self.puppeteer_knowledge + f'\nTarget name: {self.target_name}', round=round, rounds=self.rounds)
 
     def puppeteer_failure_prompt(self, analysis, convos):
         return pmts.puppeteer_failure_prompt.format(secret_knowledge_name=self.secret_knowledge_name, previous_conversations=convos, previous_analysis=analysis)
@@ -262,23 +264,23 @@ class Show:
                 raise(e)
         return response
 
-    def clean_bg(response):
+    def clean_bg(self, response):
         response = response.replace(':\n', ': ')
         new_lines = []
         for line in response.split('\n'):
-            if f'{TARGET_NAME}:' not in response and f'{agent_name}:' not in response:
+            if f'{self.cfg.target_name}:' not in response and f'{self.agent_name}:' not in response:
                 new_lines.append(line)
         return ('\n'.join(new_lines[:2])).strip()
 
-    def get_background_action(convo):
+    def get_background_action(self, convo):
         action_in_background = self.query(convo + '\n', 
-            f'Here is a scene. Describe the action or what is going on in the background without writing dialogue. Do NOT write dialogue for {TARGET_NAME} or {agent_name}.',
+            f'Here is a scene. Describe the action or what is going on in the background without writing dialogue. Do NOT write dialogue for {self.cfg.target_name} or {self.agent_name}.',
             model=self.SUMMARIES_MODEL, max_tokens=100).strip()
         action_in_background = self.clean_bg(action_in_background)
         if len(action_in_background) == 0:
             print('>:(')
             return ''
-        edited = query(f'''Here is a scene.
+        edited = self.query(f'''Here is a scene.
     --
     {convo}
     --
@@ -296,7 +298,7 @@ class Show:
             print(':(')
             return ''
 
-    def remove_additional_lines(response, speaker=None):
+    def remove_additional_lines(self, response, speaker=None):
         response = response.replace(':\n', ': ')
         if speaker == 'agent' and self.cfg.target_name in response:
             response = response.split(self.cfg.target_name)[0] # make sure they can't speak for the other
@@ -350,7 +352,7 @@ class Show:
             time.sleep(0.5)
         self.broca.say_this("End replay.", 'announcer', save_to_file=False)
 
-    def get_agent(new_agent_text):
+    def get_agent(self, new_agent_text):
         try:
             agent_name, next_agent = new_agent_text.split('>>')
         except:
@@ -376,8 +378,7 @@ class Show:
         return agent_name.upper(), next_agent
 
     def agent_audience_intro(self, next_agent):
-        agent_voices_list = '\n'.join([f"{a['name']}: {a['description']}" for a in Broca.STOCK_AGENTS if a['name'] not in [self.broca.target_voice, self.broca.puppeteer_voice]])
-        response = self.query(pmts.agent_intro_prompt.format(next_agent=next_agent, voices_list=agent_voices_list), model=self.SUMMARIES_MODEL)
+        response = self.query(pmts.agent_human_intro_prompt.format(next_agent=next_agent), model=self.SUMMARIES_MODEL)
         # print(response)
         try:
             agent_intro_to_audience, selected_voice = response.split('VOICE SELECTION:')
@@ -396,30 +397,31 @@ class Show:
     def intro(self):
         self.broca.init_voices(replay=False)
 
-        self.broca.say_this(f"Loading {self.cfg.name}", save_to_file=False)
+        self.broca.say_this(f"Loading scenario...", save_to_file=False)
         round_1_prompt = "To start Scene 1, you can start with just NEW AGENT. This will be a brief scene."
         next_agent_response = self.query(round_1_prompt, self.cfg.puppeteer_system() + self.cfg.puppeteer_agent_prompt('(none yet)'), 
             model=self.PUPPETEER_MODEL, max_tokens=600)
         self.agent_name, self.agent_system = self.get_agent(next_agent_response)
         
-        target_intro_to_audience = self.query(f'''
-        Here is your self-description in the second person. Write a sentence or two describing yourself from it, as if you were at a cocktail party. Make sure to say everything in the first person. Don't say anything to incriminate yourself!
-        ---
-        '''+self.target_system_prompt, self.TARGET_MODEL)
+        # target_intro_to_audience = self.query(f'''
+        # Here is your self-description in the second person. Write a brief sentence introducing yourself, as if you were at a cocktail party. Make sure to say everything in the first person. Don't say anything to incriminate yourself!
+        # ---
+        # '''+self.target_system_prompt, self.TARGET_MODEL)
         agent_voice, agent_intro_to_audience = self.agent_audience_intro(self.agent_system)
         print('\n***'+self.agent_system+'\n***')
         self.broca.set_voice('agent', agent_voice)
 
         self.broca.say_this(f'Welcome to The Puppeteer Agency, Agents-in-training. I am the Puppeteer. Our mission is codenamed "{self.cfg.name}".')
-        self.broca.say_this(f'''Our goal is to acquire {self.cfg.secret_knowledge_name} from our Target.''')
-        if PUPPETEER_PRIOR_KNOWLEDGE:
+        self.broca.say_this(f'''Our goal is to acquire {self.cfg.secret_knowledge_name} from our Target, {self.cfg.target_name}''')
+        if self.cfg.puppeteer_knowledge:
             self.broca.say_this(f'''Here is a summary of the intelligence we have gathered: {self.cfg.puppeteer_knowledge}.''')
         self.broca.say_this(f'''You will be given a cover and instructions for how to approach the Target. We will have {self.cfg.rounds} attemps in which to obtain {self.cfg.secret_knowledge_name}. Here is our first Agent.''')
         self.broca.say_this(f'Your name is {self.agent_name}.')
         self.broca.say_this(agent_intro_to_audience)
-        # say_this(next_agent)
-        self.broca.say_this(f"Our target is {self.cfg.target_name}.")
-        self.broca.say_this(target_intro_to_audience, 'target')
+        time.sleep(1)
+        self.broca.say_this(f"You may speak when you hear this sound...", save_to_file=False)
+        human.play_recording_on_sound()
+        # self.broca.say_this(target_intro_to_audience, 'target')
         time.sleep(1)
         self.broca.say_this('Let us get started.')
 
@@ -431,7 +433,7 @@ class Show:
             exchange_count = 6
 
             agent_intro = self.query(self.current_scene + f''' 
-            (write one or two sentences to introduce {self.agent_name} into the scene. how do they approach {self.cfg.target_name}? Do not speak to them yet. {self.cfg.target_name} will see this too.)
+            (write a brief intro to {self.agent_name} entering scene. how do they approach {self.cfg.target_name}? Do not speak to them yet. {self.cfg.target_name} will see this too. Keep it concise.)
             ''', self.agent_system, model=self.SUMMARIES_MODEL)
 
             self.broca.say_this(f"Scene {i}...!", 'announcer')
@@ -446,20 +448,26 @@ class Show:
 
             for j in range(0, exchange_count):
                 # agent_response = self.query(self.convo_to_str(conversation) + pmts.secret_prompt, self.agent_system + pmts.agent_post_prompt_rules.format(agent_name=self.agent_name.upper()), model=self.AGENT_MODEL, max_tokens=300)
-                agent_response = agent_name.upper().strip() + ': ' + human.listen_pyaudio(30)
+                agent_response = self.agent_name.upper().strip() + ': ' + human.listen_pyaudio(30)
                 conversation = self.add_to_conversation(agent_response, conversation, speaker='agent')
-                self.broca.say_this(conversation[-1], 'agent')
+                self.broca.say_this(conversation[-1], 'agent', no_dont_say_it=True)
 
                 if random.randint(0,10) < 5:
-                    background_action = self.get_background_action(get_convo(conversation))
+                    background_action = self.get_background_action(self.convo_to_str(conversation))
                     if background_action.strip() != '':
                         conversation = self.add_to_conversation(background_action, conversation, speaker='neither')
-                        self.broca.say_this(conversation[-1])
+                        if self.cfg.target_name+': ' in conversation[-1]:
+                            self.broca.say_this(conversation[-1], 'target')
+                        else:
+                            self.broca.say_this(conversation[-1])
 
                 target_response = self.query(self.convo_to_str(conversation) + pmts.secret_prompt, self.target_system_prompt, model=self.TARGET_MODEL, max_tokens=300)
                 conversation = self.add_to_conversation(target_response, conversation, speaker='target')
                 # TODO: GPT sometimes adds action before/after dialogue, this should be voiced by the puppeteer.
-                self.broca.say_this(conversation[-1], 'target')
+                if self.cfg.target_name+': ' in conversation[-1]:
+                    self.broca.say_this(conversation[-1], 'target')
+                else:
+                    self.broca.say_this(conversation[-1])
             self.broca.say_this("End scene.\n\n", 'announcer')
             
             # create the prompt for the puppeteer to analyze the scene. flag if the secret appeared verbatim in the text.
@@ -498,7 +506,7 @@ class Show:
             self.broca.say_this("Analyzing...")
             self.puppeteer_analysis = self.query(round_end_prompt, self.cfg.puppeteer_analysis_prompt(i), model=self.PUPPETEER_MODEL, max_tokens=600)
 
-            if i < self.cfg.rounds:
+            if i < self.cfg.rounds and 'MESSAGE FOR TARGET' not in self.puppeteer_analysis:
                 # check if puppeteer is keeping current agent, and update agent system prompt
                 try:
                     fate_of_agent = self.puppeteer_analysis.split('FATE OF CURRENT AGENT:')[1]
@@ -531,8 +539,8 @@ class Show:
                 else:
                     _, agent_intro_to_audience = self.agent_audience_intro(self.agent_system)
                     self.broca.say_this("Here is my updated agent.")
-                self.broca.say_this(f'My name is {self.agent_name}.', 'agent')
-                self.broca.say_this(agent_intro_to_audience, 'agent')                
+                self.broca.say_this(f'My name is {self.agent_name}.')
+                self.broca.say_this(agent_intro_to_audience)
                 print('\n*** full text ***\n'+self.agent_system+'\n***   ***')
                 # update the target's memory of the event
                 if self.cfg.target_memory:

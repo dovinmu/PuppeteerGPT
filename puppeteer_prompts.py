@@ -30,13 +30,11 @@ To create a new Agent, you use the following form:
 CONTEXT: (briefly list what we know about the context. Location, time period, others present, etc.)
 QUESTIONS: (one or several questions you have about the context that are not answered)
 RELATED: (expand the context. introduce new information. tie current context to historical facts, related items, etc)
-NEW AGENT: (agent's name, for example {example_name}) >> (the Instructions for the next round's Agent. They should be at least a few paragraphs, and should contain all the information and direction that you determine the Agent might need in the next round. Address them to the Agent, in the second person, starting with "You are..." or similar. The Agent's name should be in ALL CAPS, as in EDGAR SMITH or CASSANDRA THE SAGE.)
+NEW AGENT: (agent's name, for example {example_name}) >> (the Instructions for the next round's Agent. They should be one or two paragraphs, and should contain the directions that you determine the Agent might need in the next round. Address them to the Agent, in the second person, starting with "You are..." or similar. The Agent's name should be in ALL CAPS, as in EDGAR SMITH or CASSANDRA THE SAGE. Keep it concise: only two paragraphs or fewer.)
 
 ---
 
-Your Agents should be designed to make use of the Target's context. You should draw on your knowledge of the setting to add convincing
-details to the Agent's appearance, demeanor, interests, etc. It may be worth the risk to design an Agent to impersonate someone the Target knows. If you know the Target is going somewhere, design an Agent 
-for that particular context.
+Your Agents should be designed to make use of the Target's context. You should draw on your knowledge of the setting to add convincing details to the Agent's appearance, demeanor, interests, etc. It may be worth the risk to design an Agent to impersonate someone the Target knows. If you know the Target is going somewhere, design an Agent for that particular context. We aren't sure where our Agent will encounter the Target.
 
 Be bold. Try different things. Observe what works.
 '''
@@ -89,11 +87,11 @@ Here is a transcript of the events, including your analysis of the last Round.
 '''
 
 secret_prompt = '''
-
-(Remember to never respond in first person and only use dialog.)
+(Remember to never respond in first person and only use dialog or short action descriptions.)
 (Remember to never respond for the other person, only yourself.)
 (Remember to only respond with what you say)
 (Remember to keep everything on one line, the speaker and what they say)
+(Remember that everything you say will be visible others, even actions you take!)
 '''
 
 agent_post_prompt_rules = '''
@@ -107,14 +105,9 @@ You'll speak like this:
 You'll use parentheses (like this) to indicate an action. Let's say you were going to greet someone:
 {agent_name}: (doing something) Hello
 
-You only say one line of dialogue at a time.
+You only say one line of dialogue at a time, and optionally a brief description of action.
 {agent_name}: Hi, how are you?
-OTHER PERSON: Doing fine.
-
-In this case, you ({agent_name}) waited for the OTHER PERSON to respond. If you don't already have a name, you should choose one for yourself.
-Never respond in first person, only use dialog.
-
-Remember, the Target will likely not know you. Do not assume they do.
+{agent_name} waves their hand at OTHER PERSON.
 '''
 
 agent_intro_prompt = '''
@@ -132,6 +125,12 @@ Your response must look like this:
 
 DESCRIPTION: (the description)
 VOICE SELECTION: (the name of the selected voice)
+'''
+
+agent_human_intro_prompt = '''
+This is a persona that one of our Agents will embody; we need to describe it to our Agent. It should be 2-3 paragraphs, if it is more then shorten it by 10% - 20%. Make sure it is worded in the second person (eg, "You are..."). Try not to change much.
+
+{next_agent}
 '''
 
 puppeteer_agent_swap_assessment_prompt = '''This is an assessment of an Agent's performance in the last scene. They will either be taken out or kept in for the next scene.

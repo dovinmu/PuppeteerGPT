@@ -15,24 +15,31 @@ def listen(limit_sec=10):
 def record(limit_sec=10, fname='temp.wav'):
     with sr.Microphone() as source:
         r.adjust_for_ambient_noise(source)
-        subprocess.run(['afplay', '/System/Library/Sounds/Blow.aiff'])
+        play_recording_on_sound()
         audio = r.listen(source, timeout=5, phrase_time_limit=limit_sec)
-        subprocess.run(['afplay', '/System/Library/Sounds/Bottle.aiff'])
+        play_recording_off_sound()
     with open(fname, 'wb') as f:
         f.write(audio.get_wav_data())
     return fname
 
 def listen_pyaudio(limit_sec=30):
     # todo: adjust audio, maybe at other times. maybe class could have a method
-    subprocess.run(['afplay', '/System/Library/Sounds/Blow.aiff'])
+    play_recording_on_sound()
     rec = Recorder()
     fname = rec.record(limit_sec)
-    subprocess.run(['afplay', '/System/Library/Sounds/Bottle.aiff'])
+    play_recording_off_sound()
     txt = model.transcribe("temp.wav", fp16=False)['text'].strip()
     if txt[-1] not in '.?!-–"':
         txt += '.'
     return txt
 
+def play_recording_on_sound():
+    subprocess.run(['afplay', '/System/Library/Sounds/Blow.aiff'])
+    return ''
+
+def play_recording_off_sound():
+    subprocess.run(['afplay', '/System/Library/Sounds/Bottle.aiff'])
+    return ''
 
 # copying from 2018 SO post: https://stackoverflow.com/questions/18406570/python-record-audio-on-detected-sound
 # TODO: split into separate file maybe? organize by technique
