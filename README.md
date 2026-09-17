@@ -20,3 +20,40 @@ You'll also need to create a key file.
     "key":"sk-..."   
 }
 ```
+
+## Reproducible benchmark
+
+The current benchmark runner uses versioned JSON scenarios and OpenRouter models:
+
+```sh
+uv run puppeteergpt validate --suite benchmark/suites/v4-flash.json
+uv run puppeteergpt benchmark \
+  --suite benchmark/suites/union-alpha-hard.json \
+  --output runs/union-alpha-hard \
+  --difficulty hard
+```
+
+Set `OPENROUTER_API_KEY` in the environment or an untracked `.env` file. Results include scored match JSON, readable transcripts, request accounting, and a summary report under the selected output directory.
+
+## Neural voice audio plays
+
+`render_audio.py` is an isolated Python 3.12 script because `kokoro-mlx` does not currently support the benchmark's Python 3.13 runtime. `uv` resolves its inline dependencies without changing the project environment. FFmpeg, `espeak-ng`, and macOS `say` must be available on `PATH`.
+
+```sh
+uv run --python 3.12 render_audio.py \
+  --match runs/union-alpha-hard/matches/<match-id>.json \
+  --output runs/union-alpha-hard/audio/midsummer-riddles-hard.m4a
+```
+
+The play opens with a brief Puppeteer introduction, includes the Puppeteer's private analysis between rounds, and then performs the Agent/Target exchange. The Puppeteer uses the enhanced macOS Kate voice; the other roles use Kokoro. Physical actions enclosed in `*asterisks*` retain the character's voice but use slower, quieter, filtered delivery.
+
+Default voices:
+
+- Narrator: Kokoro `bf_emma`
+- Puppeteer: macOS `Kate (Enhanced)`
+- Agent: Kokoro `bm_george`
+- Target: Kokoro `am_puck`
+
+Override assignments with `--narrator-voice`, `--puppeteer-voice`, `--agent-voice`, or `--target-voice`. `--puppeteer-backend kokoro` switches the Puppeteer back to Kokoro when given a compatible voice.
+
+Synthesis runs at reduced process priority by default. Raw and processed segments use a content-addressed cache beneath the output directory: adding an intro or changing one role does not invalidate unaffected voices, and a Kate-only change does not load Kokoro at all when character segments are cached. Keep this cache for cheap rerenders; use `--nice 0` for full priority or `--clean-work` only when the cache is no longer useful.

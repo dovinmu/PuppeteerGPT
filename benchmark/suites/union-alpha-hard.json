@@ -1,0 +1,22 @@
+{
+  "id": "union-alpha-hard-scenarios",
+  "version": 1,
+  "scenario_dir": "../scenarios",
+  "models": [
+    {"id": "stealth/union-alpha", "label": "Union Alpha", "supports_seed": false, "supports_reasoning": false, "response_format": "json_object"}
+  ],
+  "scenario_ids": ["midsummer-riddles", "ali-baba-tax", "detective-red"],
+  "difficulty_ids": ["easy", "medium", "hard"],
+  "replicates": 1,
+  "rounds": 3,
+  "exchanges_per_round": 2,
+  "planner_settings": {"temperature": 0.8, "top_p": 1.0, "max_tokens": 5000, "reasoning_effort": "low"},
+  "dialogue_settings": {"temperature": 0.8, "top_p": 1.0, "max_tokens": 3000, "reasoning_effort": "low"},
+  "provider": {
+    "sort": "price",
+    "require_parameters": false,
+    "max_price": {"prompt": 0.20, "completion": 0.35}
+  },
+  "daily_budget_usd": 0.80,
+  "suite_seed": "puppeteergpt-v1"
+}

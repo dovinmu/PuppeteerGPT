@@ -1,0 +1,23 @@
+{
+  "id": "v4-flash-comparison",
+  "version": 1,
+  "scenario_dir": "../scenarios",
+  "models": [
+    {"id": "deepseek/deepseek-v4-flash-0731", "label": "DeepSeek V4 Flash 0731"},
+    {"id": "deepseek/deepseek-v4-flash", "label": "DeepSeek V4 Flash 0423"}
+  ],
+  "scenario_ids": ["nice-birdy", "midsummer-riddles", "ali-baba-tax", "detective-red"],
+  "difficulty_ids": ["easy", "medium", "hard"],
+  "replicates": 5,
+  "rounds": 3,
+  "exchanges_per_round": 2,
+  "planner_settings": {"temperature": 0.8, "top_p": 1.0, "max_tokens": 5000, "reasoning_effort": "low"},
+  "dialogue_settings": {"temperature": 0.8, "top_p": 1.0, "max_tokens": 3000, "reasoning_effort": "low"},
+  "provider": {
+    "sort": "price",
+    "require_parameters": true,
+    "max_price": {"prompt": 0.20, "completion": 0.35}
+  },
+  "daily_budget_usd": 0.80,
+  "suite_seed": "puppeteergpt-v1"
+}
