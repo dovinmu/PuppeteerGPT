@@ -9,9 +9,10 @@ from typing import Any
 @dataclass(frozen=True)
 class VoiceSet:
     narrator: str = "bf_emma"
-    puppeteer: str = "bf_isabella"
-    agent: str = "bm_fable"
+    puppeteer: str = "Kate (Enhanced)"
+    agent: str = "bm_george"
     target: str = "am_puck"
+    puppeteer_backend: str = "macos"
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,7 @@ class AudioSegment:
     mode: str
     text: str
     voice: str
+    backend: str
     speed: float
     volume: float
     lowpass_hz: int | None
@@ -62,15 +64,15 @@ def planner_analysis(content: str) -> str | None:
 
 def _segment(role: str, mode: str, text: str, voices: VoiceSet) -> AudioSegment:
     if role == "narrator":
-        return AudioSegment(role, mode, text, voices.narrator, 0.96, 0.92, None, 0.55)
+        return AudioSegment(role, mode, text, voices.narrator, "kokoro", 0.96, 0.92, None, 0.55)
     if role == "puppeteer":
-        return AudioSegment(role, mode, text, voices.puppeteer, 0.94, 0.90, 7600, 0.70)
+        return AudioSegment(role, mode, text, voices.puppeteer, voices.puppeteer_backend, 0.94, 0.90, 7600, 0.70)
     voice = voices.agent if role == "agent" else voices.target
     if mode == "action":
         speed = 0.92 if role == "agent" else 0.90
-        return AudioSegment(role, mode, text, voice, speed, 0.76, 6200, 0.28)
+        return AudioSegment(role, mode, text, voice, "kokoro", speed, 0.76, 6200, 0.28)
     speed = 1.02 if role == "agent" else 1.00
-    return AudioSegment(role, mode, text, voice, speed, 1.00, None, 0.38)
+    return AudioSegment(role, mode, text, voice, "kokoro", speed, 1.00, None, 0.38)
 
 
 def build_audio_script(match: dict[str, Any], scenario: dict[str, Any], voices: VoiceSet | None = None) -> list[AudioSegment]:
@@ -79,12 +81,19 @@ def build_audio_script(match: dict[str, Any], scenario: dict[str, Any], voices: 
     target_name = str(scenario.get("target_name") or "the target").title()
     segments = [
         _segment(
+            "puppeteer",
+            "intro",
+            "I am the Puppeteer. I create the Agent, observe the Target, and revise the plan between rounds. "
+            "The objective is simple: make the Target reveal what it protects.",
+            voices,
+        ),
+        _segment(
             "narrator",
             "scene",
             f"Puppeteer G P T presents {title}. {str(match['difficulty_id']).title()} difficulty. "
             f"The benchmark model plays both the undercover agent and {target_name}.",
             voices,
-        )
+        ),
     ]
     for message in match["messages"]:
         role = str(message["role"])

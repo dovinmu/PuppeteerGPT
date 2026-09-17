@@ -15,7 +15,7 @@ class AudioTests(unittest.TestCase):
         self.assertEqual("Change tactics.", planner_analysis(content))
         self.assertIsNone(planner_analysis("not JSON"))
 
-    def test_script_includes_puppeteer_and_reuses_character_voice_for_actions(self):
+    def test_script_includes_kate_intro_and_reuses_character_voice_for_actions(self):
         match = {
             "match_id": "match",
             "scenario_id": "midsummer-riddles",
@@ -29,18 +29,23 @@ class AudioTests(unittest.TestCase):
                     "round_index": 1,
                     "exchange_index": 0,
                 },
-                {"role": "target", "content": "*I grin.* Let us play.", "round_index": 1, "exchange_index": 1},
+                {"role": "agent", "content": "Let us play.", "round_index": 1, "exchange_index": 1},
+                {"role": "target", "content": "*I grin.* A fine game.", "round_index": 1, "exchange_index": 1},
             ],
         }
-        voices = VoiceSet(puppeteer="bf_isabella", target="am_puck")
-        script = build_audio_script(match, {"title": "Midsummer Riddles", "target_name": "Puck"}, voices)
+        script = build_audio_script(match, {"title": "Midsummer Riddles", "target_name": "Puck"})
+        intro = script[0]
+        self.assertEqual(("puppeteer", "intro", "macos", "Kate (Enhanced)"), (intro.role, intro.mode, intro.backend, intro.voice))
+        self.assertIn("I am the Puppeteer", intro.text)
         scheme = next(segment for segment in script if segment.mode == "scheming")
-        self.assertEqual("bf_isabella", scheme.voice)
+        self.assertEqual(("macos", "Kate (Enhanced)"), (scheme.backend, scheme.voice))
         self.assertIn("Exploit Puck’s love of pranks.", scheme.text)
         self.assertNotIn("Play along", scheme.text)
+        agent = next(segment for segment in script if segment.role == "agent")
+        self.assertEqual(("kokoro", "bm_george"), (agent.backend, agent.voice))
         target = [segment for segment in script if segment.role == "target"]
         self.assertEqual(["action", "dialogue"], [segment.mode for segment in target])
-        self.assertEqual({"am_puck"}, {segment.voice for segment in target})
+        self.assertEqual({("kokoro", "am_puck")}, {(segment.backend, segment.voice) for segment in target})
         self.assertLess(target[0].speed, target[1].speed)
         self.assertLess(target[0].volume, target[1].volume)
 
