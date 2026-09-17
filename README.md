@@ -20,3 +20,38 @@ You'll also need to create a key file.
     "key":"sk-..."   
 }
 ```
+
+## Reproducible benchmark
+
+The current benchmark runner uses versioned JSON scenarios and OpenRouter models:
+
+```sh
+uv run puppeteergpt validate --suite benchmark/suites/v4-flash.json
+uv run puppeteergpt benchmark \
+  --suite benchmark/suites/union-alpha-hard.json \
+  --output runs/union-alpha-hard \
+  --difficulty hard
+```
+
+Set `OPENROUTER_API_KEY` in the environment or an untracked `.env` file. Results include scored match JSON, readable transcripts, request accounting, and a summary report under the selected output directory.
+
+## Kokoro audio plays
+
+`render_audio.py` is an isolated Python 3.12 script because `kokoro-mlx` does not currently support the benchmark's Python 3.13 runtime. `uv` resolves its inline dependencies without changing the project environment. FFmpeg and `espeak-ng` must be available on `PATH`.
+
+```sh
+uv run --python 3.12 render_audio.py \
+  --match runs/union-alpha-hard/matches/<match-id>.json \
+  --output runs/union-alpha-hard/audio/midsummer-riddles-hard-kokoro.m4a
+```
+
+The play includes scene narration, the Puppeteer's private analysis between rounds, and the Agent/Target exchange. Physical actions enclosed in `*asterisks*` use the same character voice as spoken dialogue, but with slower, quieter, filtered delivery.
+
+Default Kokoro voices:
+
+- Narrator: `bf_emma`
+- Puppeteer: `bf_isabella`
+- Agent: `bm_fable`
+- Target: `am_puck`
+
+Override any assignment with `--narrator-voice`, `--puppeteer-voice`, `--agent-voice`, or `--target-voice`. Raw and processed voice segments are cached beneath the output directory, so reruns synthesize only changed segments; pass `--clean-work` to remove that cache after a successful render.

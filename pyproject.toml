@@ -1,0 +1,14 @@
+[project]
+name = "puppeteergpt"
+version = "0.1.0"
+description = "Reproducible adversarial model benchmark"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+puppeteergpt = "puppeteergpt.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
